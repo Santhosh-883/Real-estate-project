@@ -2,25 +2,25 @@ import { Server } from "socket.io";
 
 const io = new Server({
   cors: {
-    origin: "http://localhost:5173",
+    origin: "*",
   },
 });
 
-let onlineUser = [];
+let onlineUsers = [];
 
 const addUser = (userId, socketId) => {
-  const userExits = onlineUser.find((user) => user.userId === userId);
-  if (!userExits) {
-    onlineUser.push({ userId, socketId });
+  const userExists = onlineUsers.find((user) => user.userId === userId);
+  if (!userExists) {
+    onlineUsers.push({ userId, socketId });
   }
 };
 
 const removeUser = (socketId) => {
-  onlineUser = onlineUser.filter((user) => user.socketId !== socketId);
+  onlineUsers = onlineUsers.filter((user) => user.socketId !== socketId);
 };
 
 const getUser = (userId) => {
-  return onlineUser.find((user) => user.userId === userId);
+  return onlineUsers.find((user) => user.userId === userId);
 };
 
 io.on("connection", (socket) => {
@@ -30,7 +30,9 @@ io.on("connection", (socket) => {
 
   socket.on("sendMessage", ({ receiverId, data }) => {
     const receiver = getUser(receiverId);
-    io.to(receiver.socketId).emit("getMessage", data);
+    if (receiver) {
+      io.to(receiver.socketId).emit("getMessage", data);
+    }
   });
 
   socket.on("disconnect", () => {
@@ -38,4 +40,5 @@ io.on("connection", (socket) => {
   });
 });
 
-io.listen("4000");
+io.listen(process.env.PORT || "4000");
+console.log("Socket server is running on port " + (process.env.PORT || "4000"));

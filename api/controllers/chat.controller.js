@@ -1,30 +1,24 @@
-import prisma from "../lib/prisma.js";
+import mongoose from "mongoose";
 
 export const getChats = async (req, res) => {
   const tokenUserId = req.userId;
+  const { Chat, User } = req.app.locals.models;
 
   try {
-    const chats = await prisma.chat.findMany({
-      where: {
-        userIDs: {
-          hasSome: [tokenUserId],
-        },
-      },
-    });
+    const chats = await Chat.find({ userIDs: tokenUserId })
+      .sort({ createdAt: -1 })
+      .lean();
 
     for (const chat of chats) {
-      const receiverId = chat.userIDs.find((id) => id !== tokenUserId);
+      const receiverId = chat.userIDs
+        .map((id) => id.toString())
+        .find((id) => id !== tokenUserId);
 
-      const receiver = await prisma.user.findUnique({
-        where: {
-          id: receiverId,
-        },
-        select: {
-          id: true,
-          username: true,
-          avatar: true,
-        },
-      });
+      const receiver = await User.findById(receiverId)
+        .select("username avatar")
+        .lean();
+      chat.id = chat._id.toString();
+      delete chat._id;
       chat.receiver = receiver;
     }
 
@@ -37,34 +31,33 @@ export const getChats = async (req, res) => {
 
 export const getChat = async (req, res) => {
   const tokenUserId = req.userId;
+  const chatId = req.params.id;
+  const { Chat, Message } = req.app.locals.models;
+  if (!mongoose.Types.ObjectId.isValid(chatId)) {
+    return res.status(400).json({ message: "Invalid chat id!" });
+  }
 
   try {
-    const chat = await prisma.chat.findUnique({
-      where: {
-        id: req.params.id,
-        userIDs: {
-          hasSome: [tokenUserId],
-        },
-      },
-      include: {
-        messages: {
-          orderBy: {
-            createdAt: "asc",
-          },
-        },
-      },
+    const chat = await Chat.findOne({
+      _id: chatId,
+      userIDs: tokenUserId,
+    }).lean();
+
+    if (!chat) return res.status(404).json({ message: "Chat not found!" });
+
+    const messages = await Message.find({ chatId }).sort({ createdAt: 1 }).lean();
+
+    await Chat.findByIdAndUpdate(chatId, {
+      $addToSet: { seenBy: tokenUserId },
     });
 
-    await prisma.chat.update({
-      where: {
-        id: req.params.id,
-      },
-      data: {
-        seenBy: {
-          push: [tokenUserId],
-        },
-      },
-    });
+    chat.id = chat._id.toString();
+    delete chat._id;
+    chat.messages = messages.map((message) => ({
+      ...message,
+      id: message._id.toString(),
+      _id: undefined,
+    }));
     res.status(200).json(chat);
   } catch (err) {
     console.log(err);
@@ -74,11 +67,17 @@ export const getChat = async (req, res) => {
 
 export const addChat = async (req, res) => {
   const tokenUserId = req.userId;
+  const { Chat } = req.app.locals.models;
   try {
-    const newChat = await prisma.chat.create({
-      data: {
-        userIDs: [tokenUserId, req.body.receiverId],
-      },
+    const existingChat = await Chat.findOne({
+      userIDs: { $all: [tokenUserId, req.body.receiverId] },
+    });
+
+    if (existingChat) return res.status(200).json(existingChat);
+
+    const newChat = await Chat.create({
+      userIDs: [tokenUserId, req.body.receiverId],
+      seenBy: [tokenUserId],
     });
     res.status(200).json(newChat);
   } catch (err) {
@@ -89,22 +88,23 @@ export const addChat = async (req, res) => {
 
 export const readChat = async (req, res) => {
   const tokenUserId = req.userId;
+  const chatId = req.params.id;
+  const { Chat } = req.app.locals.models;
+  if (!mongoose.Types.ObjectId.isValid(chatId)) {
+    return res.status(400).json({ message: "Invalid chat id!" });
+  }
 
-  
   try {
-    const chat = await prisma.chat.update({
-      where: {
-        id: req.params.id,
-        userIDs: {
-          hasSome: [tokenUserId],
-        },
+    const chat = await Chat.findOneAndUpdate(
+      { _id: chatId, userIDs: tokenUserId },
+      {
+        $addToSet: { seenBy: tokenUserId },
       },
-      data: {
-        seenBy: {
-          set: [tokenUserId],
-        },
-      },
-    });
+      { new: true }
+    );
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found!" });
+    }
     res.status(200).json(chat);
   } catch (err) {
     console.log(err);
