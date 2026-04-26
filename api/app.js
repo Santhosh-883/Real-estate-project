@@ -11,6 +11,34 @@ import chatRoute from "./routes/chat.route.js";
 import messageRoute from "./routes/message.route.js";
 
 const app = express();
+
+// 1. Essential Middleware (Top priority for CORS)
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || true,
+    credentials: true,
+  })
+);
+
+app.use(express.json());
+app.use(cookieParser());
+
+// 2. Health Check
+app.get("/", (req, res) => {
+  res.send("API is running!");
+});
+
+// 3. Database Connection
+if (process.env.DATABASE_URL) {
+  mongoose
+    .connect(process.env.DATABASE_URL)
+    .then(() => console.log("MongoDB connected"))
+    .catch((err) => console.error("MongoDB connection error:", err));
+} else {
+  console.error("DATABASE_URL is missing!");
+}
+
+// 4. Schemas and Models
 const { Schema } = mongoose;
 
 const withIdTransform = {
@@ -109,31 +137,7 @@ const Message =
 
 app.locals.models = { User, Post, SavedPost, Chat, Message };
 
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is missing! Connection will fail.");
-}
-
-mongoose
-  .connect(process.env.DATABASE_URL)
-  .then(() => console.log("MongoDB connected"))
-  .catch((error) => {
-    console.error("MongoDB connection failed", error);
-    process.exit(1);
-  });
-
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || true,
-    credentials: true,
-  })
-);
-app.use(express.json());
-app.use(cookieParser());
-
-app.get("/", (req, res) => {
-  res.send("API is running!");
-});
-
+// 5. API Routes
 app.use("/api/auth", authRoute);
 app.use("/api/users", userRoute);
 app.use("/api/posts", postRoute);
@@ -141,6 +145,7 @@ app.use("/api/test", testRoute);
 app.use("/api/chats", chatRoute);
 app.use("/api/messages", messageRoute);
 
+// 6. Listen (Local development only)
 if (process.env.NODE_ENV !== "production") {
   app.listen(8800, () => {
     console.log("Server is running!");
