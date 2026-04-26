@@ -36,17 +36,25 @@ app.get("/", (req, res) => {
   res.send("API is running!");
 });
 
-// 3. Database Connection
-if (process.env.DATABASE_URL) {
-  mongoose
-    .connect(process.env.DATABASE_URL)
-    .then(() => console.log("MongoDB connected"))
-    .catch((err) => console.error("MongoDB connection error:", err));
-} else {
-  console.error("DATABASE_URL is missing!");
-}
+// 3. Database Connection (Optimized for Serverless)
+const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) return;
+  return mongoose.connect(process.env.DATABASE_URL);
+};
 
-// 4. Schemas and Models
+// Middleware to ensure DB is connected before any API request
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("DB Connection Error:", err);
+    res.status(500).json({ message: "Database connection failed!" });
+  }
+});
+
+// 4. Schemas and Models (Disable buffering)
+mongoose.set("bufferCommands", false);
 const { Schema } = mongoose;
 
 const withIdTransform = {
