@@ -110,7 +110,7 @@ const Message =
 app.locals.models = { User, Post, SavedPost, Chat, Message };
 
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required");
+  console.error("DATABASE_URL is missing! Connection will fail.");
 }
 
 mongoose
@@ -141,8 +141,10 @@ app.use("/api/test", testRoute);
 app.use("/api/chats", chatRoute);
 app.use("/api/messages", messageRoute);
 
-app.listen(8800, () => {
-  console.log("Server is running!");
-});
+if (process.env.NODE_ENV !== "production") {
+  app.listen(8800, () => {
+    console.log("Server is running!");
+  });
+}
 
 export default app;
