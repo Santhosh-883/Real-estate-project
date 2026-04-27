@@ -62,6 +62,13 @@ app.use(async (req, res, next) => {
 mongoose.set("bufferCommands", false);
 const { Schema } = mongoose;
 
+const counterSchema = new Schema({
+  id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+});
+
+const Counter = mongoose.models.Counter || mongoose.model("Counter", counterSchema);
+
 const withIdTransform = {
   timestamps: { createdAt: true, updatedAt: false },
   toJSON: {
@@ -76,6 +83,7 @@ const withIdTransform = {
 
 const userSchema = new Schema(
   {
+    id: { type: Number, unique: true },
     email: { type: String, required: true, unique: true, trim: true },
     username: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
@@ -83,6 +91,18 @@ const userSchema = new Schema(
   },
   withIdTransform
 );
+
+userSchema.pre("save", async function (next) {
+  if (this.isNew) {
+    const counter = await Counter.findOneAndUpdate(
+      { id: "userId" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    this.id = counter.seq;
+  }
+  next();
+});
 
 const postDetailSchema = new Schema(
   {
@@ -156,7 +176,7 @@ const Chat = mongoose.models.Chat || mongoose.model("Chat", chatSchema);
 const Message =
   mongoose.models.Message || mongoose.model("Message", messageSchema);
 
-app.locals.models = { User, Post, SavedPost, Chat, Message };
+app.locals.models = { User, Post, SavedPost, Chat, Message, Counter };
 
 // 5. API Routes
 app.use("/api/auth", authRoute);
